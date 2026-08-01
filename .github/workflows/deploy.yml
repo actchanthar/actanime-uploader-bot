@@ -1,0 +1,64 @@
+name: Deploy Bot to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: python3 -m py_compile bot.py && echo "✅ Syntax OK"
+
+      - name: Deploy files to VPS
+        uses: easingthemes/ssh-deploy@main
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
+          REMOTE_HOST:     ${{ secrets.VPS_HOST }}
+          REMOTE_USER:     ${{ secrets.VPS_USER }}
+          SOURCE:          "./"
+          TARGET:          "/www/wwwroot/actanime-bot"
+          EXCLUDE:         "config.env, tmp/, *.session, __pycache__/, *.log, .git/"
+          ARGS:            "-rlgoDzvc --delete"
+
+      - name: Install deps + write config.env + restart bot
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /www/wwwroot/actanime-bot
+
+            # Write config.env from GitHub secret
+            printf '%s' "$BOT_CONFIG" > config.env
+
+            # Make tmp folder
+            mkdir -p tmp
+
+            # Install Python packages
+            pip3 install -q -r requirements.txt
+
+            # Stop old bot
+            pkill -f "python3 bot.py" || true
+            sleep 1
+
+            # Start bot
+            nohup python3 bot.py >> bot.log 2>&1 &
+            sleep 3
+
+            if pgrep -f "python3 bot.py" > /dev/null; then
+              echo "✅ Bot running! PID: $(pgrep -f 'python3 bot.py')"
+            else
+              echo "❌ Bot crashed — last 20 lines of log:"
+              tail -20 bot.log
+              exit 1
+            fi
+        env:
+          BOT_CONFIG: ${{ secrets.BOT_CONFIG_ENV }}

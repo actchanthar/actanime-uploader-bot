@@ -1,0 +1,5 @@
+pyrogram==2.0.106
+tgcrypto==1.2.5
+boto3==1.34.144
+python-dotenv==1.0.1
+aiofiles==23.2.1
