@@ -22,7 +22,7 @@ jobs:
           REMOTE_HOST:     ${{ secrets.VPS_HOST }}
           REMOTE_USER:     ${{ secrets.VPS_USER }}
           SOURCE:          "./"
-          TARGET:          "/www/wwwroot/actanime-bot"
+          TARGET:          "/root/actanime-bot"
           EXCLUDE:         "tmp/, *.session, __pycache__/, *.log, .git/"
           ARGS:            "-rlgoDzvc --delete"
 
@@ -34,7 +34,7 @@ jobs:
           key:      ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            cd /www/wwwroot/actanime-bot
+            cd /root/actanime-bot
 
             # Create tmp folder
             mkdir -p tmp
