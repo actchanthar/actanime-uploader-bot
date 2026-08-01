@@ -42,18 +42,22 @@ jobs:
             # Install Python packages
             pip3 install -q -r requirements.txt --break-system-packages
 
-            # Stop old bot
-            pkill -f "python3 bot.py" || true
-            sleep 1
+            # Stop ONLY this bot using PID file
+            if [ -f /root/actanime-bot/bot.pid ]; then
+              PID=$(cat /root/actanime-bot/bot.pid)
+              kill "$PID" 2>/dev/null || true
+              sleep 1
+            fi
 
-            # Start bot
-            nohup python3 bot.py >> bot.log 2>&1 &
+            # Start bot with PID file
+            nohup python3 /root/actanime-bot/bot.py >> /root/actanime-bot/bot.log 2>&1 &
+            echo $! > /root/actanime-bot/bot.pid
             sleep 3
 
-            if pgrep -f "python3 bot.py" > /dev/null; then
-              echo "✅ Bot running! PID: $(pgrep -f 'python3 bot.py')"
+            if kill -0 $(cat /root/actanime-bot/bot.pid) 2>/dev/null; then
+              echo "✅ Bot running! PID: $(cat /root/actanime-bot/bot.pid)"
             else
               echo "❌ Bot crashed:"
-              tail -20 bot.log
+              tail -20 /root/actanime-bot/bot.log
               exit 1
             fi
