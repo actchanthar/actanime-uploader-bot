@@ -40,7 +40,7 @@ jobs:
             mkdir -p tmp
 
             # Install Python packages
-            pip3 install -q -r requirements.txt
+            pip3 install -q -r requirements.txt --break-system-packages
 
             # Stop old bot
             pkill -f "python3 bot.py" || true
