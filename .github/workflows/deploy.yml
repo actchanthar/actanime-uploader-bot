@@ -2,7 +2,7 @@ name: Deploy Bot to VPS
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
@@ -23,10 +23,10 @@ jobs:
           REMOTE_USER:     ${{ secrets.VPS_USER }}
           SOURCE:          "./"
           TARGET:          "/www/wwwroot/actanime-bot"
-          EXCLUDE:         "config.env, tmp/, *.session, __pycache__/, *.log, .git/"
+          EXCLUDE:         "tmp/, *.session, __pycache__/, *.log, .git/"
           ARGS:            "-rlgoDzvc --delete"
 
-      - name: Install deps + write config.env + restart bot
+      - name: Install deps + restart bot
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.VPS_HOST }}
@@ -36,10 +36,7 @@ jobs:
             set -e
             cd /www/wwwroot/actanime-bot
 
-            # Write config.env from GitHub secret
-            printf '%s' "$BOT_CONFIG" > config.env
-
-            # Make tmp folder
+            # Create tmp folder
             mkdir -p tmp
 
             # Install Python packages
@@ -56,9 +53,7 @@ jobs:
             if pgrep -f "python3 bot.py" > /dev/null; then
               echo "✅ Bot running! PID: $(pgrep -f 'python3 bot.py')"
             else
-              echo "❌ Bot crashed — last 20 lines of log:"
+              echo "❌ Bot crashed:"
               tail -20 bot.log
               exit 1
             fi
-        env:
-          BOT_CONFIG: ${{ secrets.BOT_CONFIG_ENV }}
