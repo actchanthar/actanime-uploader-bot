@@ -85,8 +85,40 @@ async def cmd_start(_, msg: Message):
         "**Commands:**\n"
         "• /start – ဒီ message\n"
         "• /list  – R2 ထဲ files ကြည့်\n"
-        "• /del `<key>` – file ဖျက်"
+        "• /del `<key>` – file ဖျက်\n"
+        "• /debug – debug အချက်အလက်များ ကြည့်မည်"
     )
+
+
+# /debug
+@app.on_message(filters.command("debug") & owner_filter)
+async def cmd_debug(_, msg: Message):
+    import traceback
+    lines = [
+        "🔍 **Debug Information:**",
+        f"API_ID: `{API_ID}`",
+        f"OWNER_ID: `{OWNER_ID}`",
+        f"R2_ENDPOINT: `{R2_ENDPOINT}`",
+        f"R2_BUCKET: `{R2_BUCKET}`",
+        f"R2_ACCESS_KEY: `{R2_ACCESS_KEY[:5]}...` (len={len(R2_ACCESS_KEY)})" if R2_ACCESS_KEY else "R2_ACCESS_KEY: `None`",
+        f"R2_SECRET_KEY: `{R2_SECRET_KEY[:5]}...` (len={len(R2_SECRET_KEY)})" if R2_SECRET_KEY else "R2_SECRET_KEY: `None`",
+    ]
+    status = await msg.reply("\n".join(lines))
+    
+    try:
+        status = await status.edit(status.text + "\n\n⏳ Testing `list_buckets`...")
+        buckets = r2.list_buckets()
+        bucket_names = [b['Name'] for b in buckets.get('Buckets', [])]
+        status = await status.edit(status.text + f"\n✅ `list_buckets` Succeeded! Buckets: {bucket_names}")
+    except Exception as e:
+        status = await status.edit(status.text + f"\n❌ `list_buckets` Failed:\n`{e}`\nTraceback:\n`{traceback.format_exc()[-200:]}`")
+        
+    try:
+        status = await status.edit(status.text + f"\n\n⏳ Testing `list_objects` on bucket `{R2_BUCKET}`...")
+        r2.list_objects_v2(Bucket=R2_BUCKET, MaxKeys=5)
+        status = await status.edit(status.text + "\n✅ `list_objects` Succeeded!")
+    except Exception as e:
+        status = await status.edit(status.text + f"\n❌ `list_objects` Failed:\n`{e}`")
 
 
 # /list
