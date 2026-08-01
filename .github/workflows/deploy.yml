@@ -42,12 +42,15 @@ jobs:
             # Install Python packages
             pip3 install -q -r requirements.txt --break-system-packages
 
-            # Stop ONLY this bot using PID file
+            # Stop ONLY this bot using PID file or specific path (for migration)
             if [ -f /root/actanime-bot/bot.pid ]; then
               PID=$(cat /root/actanime-bot/bot.pid)
               kill "$PID" 2>/dev/null || true
-              sleep 1
             fi
+            # One-time path-specific cleanup to ensure transition succeeds
+            pkill -f "python3 /root/actanime-bot/bot.py" || true
+            pkill -f "python3 /www/wwwroot/actanime-bot/bot.py" || true
+            sleep 2
 
             # Start bot with PID file
             nohup python3 /root/actanime-bot/bot.py >> /root/actanime-bot/bot.log 2>&1 &
