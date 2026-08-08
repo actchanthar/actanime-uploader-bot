@@ -33,14 +33,9 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key:      ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 5m
-          debug: true
           script: |
-            echo "=== START STOP STEP ==="
+            echo "=== STOP STEP ==="
             whoami
-            pwd
-            ls -la /root/ || true
-            ls -la /root/tgvdup || true
-
             cd /root/tgvdup
             mkdir -p tmp
 
@@ -48,20 +43,28 @@ jobs:
             pip3 install -q -r requirements.txt --break-system-packages || true
             echo "pip done"
 
-            echo "Stopping old processes..."
+            echo "Stopping old processes by PID only..."
             if [ -f bot.pid ]; then
               OLD_PID=$(cat bot.pid)
               echo "Found PID file: $OLD_PID"
-              kill $OLD_PID 2>/dev/null || true
-              sleep 1
-              kill -9 $OLD_PID 2>/dev/null || true
+              if kill -0 $OLD_PID 2>/dev/null; then
+                kill $OLD_PID 2>/dev/null || true
+                sleep 2
+                kill -9 $OLD_PID 2>/dev/null || true
+                echo "Killed PID $OLD_PID"
+              fi
               rm -f bot.pid
+            else
+              echo "No PID file found"
             fi
-            pkill -f "tgvdup/bot.py" 2>/dev/null || true
-            pkill -f "actanime-bot/bot.py" 2>/dev/null || true
+
+            # Safer process kill (avoid matching the current script)
+            pgrep -f "python3.*/root/tgvdup/bot.py" | xargs -r kill 2>/dev/null || true
             sleep 1
+            pgrep -f "python3.*/root/tgvdup/bot.py" | xargs -r kill -9 2>/dev/null || true
+
             echo "Old processes stopped"
-            echo "=== END STOP STEP ==="
+            echo "=== END STOP ==="
 
       - name: Start bot + notify owner
         uses: appleboy/ssh-action@v1.0.3
@@ -70,12 +73,9 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key:      ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 3m
-          debug: true
           script: |
-            echo "=== START START STEP ==="
+            echo "=== START STEP ==="
             cd /root/tgvdup
-            pwd
-            ls -la
 
             echo "Starting bot..."
             setsid nohup python3 bot.py >> bot.log 2>&1 < /dev/null &
@@ -106,4 +106,4 @@ jobs:
               tail -50 bot.log || true
               exit 1
             fi
-            echo "=== END START STEP ==="
+            echo "=== END START ==="
