@@ -47,21 +47,18 @@ jobs:
             if [ -f bot.pid ]; then
               OLD_PID=$(cat bot.pid)
               echo "Found PID file: $OLD_PID"
-              if kill -0 $OLD_PID 2>/dev/null; then
-                kill $OLD_PID 2>/dev/null || true
+              if kill -0 "$OLD_PID" 2>/dev/null; then
+                kill "$OLD_PID" 2>/dev/null || true
                 sleep 2
-                kill -9 $OLD_PID 2>/dev/null || true
+                kill -9 "$OLD_PID" 2>/dev/null || true
                 echo "Killed PID $OLD_PID"
+              else
+                echo "PID $OLD_PID not running"
               fi
               rm -f bot.pid
             else
-              echo "No PID file found"
+              echo "No PID file found (first run or already clean)"
             fi
-
-            # Safer process kill (avoid matching the current script)
-            pgrep -f "python3.*/root/tgvdup/bot.py" | xargs -r kill 2>/dev/null || true
-            sleep 1
-            pgrep -f "python3.*/root/tgvdup/bot.py" | xargs -r kill -9 2>/dev/null || true
 
             echo "Old processes stopped"
             echo "=== END STOP ==="
