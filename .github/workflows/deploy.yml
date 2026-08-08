@@ -32,6 +32,7 @@ jobs:
           host:     ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key:      ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
           script: |
             set -e
             cd /root/tgvdup
@@ -40,34 +41,36 @@ jobs:
             mkdir -p tmp
 
             # Install Python packages
-            pip3 install -q -r requirements.txt --break-system-packages
+            pip3 install -q -r requirements.txt --break-system-packages || true
 
-            # Stop ONLY this bot using PID file or specific path
+            # Stop ONLY this bot
             if [ -f /root/tgvdup/bot.pid ]; then
-              PID=$(cat /root/tgvdup/bot.pid)
-              kill "$PID" 2>/dev/null || true
+              OLD_PID=$(cat /root/tgvdup/bot.pid)
+              kill "$OLD_PID" 2>/dev/null || true
+              sleep 1
+              kill -9 "$OLD_PID" 2>/dev/null || true
             fi
-            # Cleanup any old processes
-            pkill -f "python3 /root/tgvdup/bot.py" || true
-            pkill -f "python3 /root/actanime-bot/bot.py" || true
-            pkill -f "python3 .*tgvdup/bot.py" || true
+            pkill -f "/root/tgvdup/bot.py" 2>/dev/null || true
+            pkill -f "/root/actanime-bot/bot.py" 2>/dev/null || true
             sleep 2
 
-            # Start bot with PID file
-            nohup python3 /root/tgvdup/bot.py >> /root/tgvdup/bot.log 2>&1 &
-            echo $! > /root/tgvdup/bot.pid
-            sleep 3
+            # Start bot fully detached
+            nohup python3 /root/tgvdup/bot.py >> /root/tgvdup/bot.log 2>&1 </dev/null &
+            NEW_PID=$!
+            echo $NEW_PID > /root/tgvdup/bot.pid
+            disown $NEW_PID 2>/dev/null || true
+            sleep 4
 
-            if kill -0 $(cat /root/tgvdup/bot.pid) 2>/dev/null; then
-              echo "✅ Bot running! PID: $(cat /root/tgvdup/bot.pid)"
+            if kill -0 $NEW_PID 2>/dev/null; then
+              echo "✅ Bot running! PID: $NEW_PID"
 
               # Notify Owner via Telegram
               if [ -f /root/tgvdup/config.env ]; then
                 set -a
-                source /root/tgvdup/config.env
+                . /root/tgvdup/config.env
                 set +a
                 if [ -n "$BOT_TOKEN" ] && [ -n "$OWNER_ID" ]; then
-                  MSG="✅ *Auto Deploy Success*\n\nBot restarted on VPS.\nPID: $(cat /root/tgvdup/bot.pid)\nTime: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+                  MSG="✅ *Auto Deploy Success*%0A%0ABot restarted on VPS.%0APID: $NEW_PID%0ATime: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
                   curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
                     -d chat_id="${OWNER_ID}" \
                     -d text="${MSG}" \
@@ -77,6 +80,9 @@ jobs:
               fi
             else
               echo "❌ Bot crashed:"
-              tail -20 /root/tgvdup/bot.log
+              tail -30 /root/tgvdup/bot.log || true
               exit 1
             fi
+
+            # Force clean exit so SSH session does not hang
+            exit 0
