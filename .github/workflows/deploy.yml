@@ -22,11 +22,11 @@ jobs:
           REMOTE_HOST:     ${{ secrets.VPS_HOST }}
           REMOTE_USER:     ${{ secrets.VPS_USER }}
           SOURCE:          "./"
-          TARGET:          "/root/actanime-bot"
+          TARGET:          "/root/tgvdup"
           EXCLUDE:         "tmp/, *.session, __pycache__/, *.log, .git/"
           ARGS:            "-rlgoDzvc --delete"
 
-      - name: Install deps + restart bot
+      - name: Install deps + restart bot + notify owner
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.VPS_HOST }}
@@ -34,7 +34,7 @@ jobs:
           key:      ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            cd /root/actanime-bot
+            cd /root/tgvdup
 
             # Create tmp folder
             mkdir -p tmp
@@ -42,25 +42,41 @@ jobs:
             # Install Python packages
             pip3 install -q -r requirements.txt --break-system-packages
 
-            # Stop ONLY this bot using PID file or specific path (for migration)
-            if [ -f /root/actanime-bot/bot.pid ]; then
-              PID=$(cat /root/actanime-bot/bot.pid)
+            # Stop ONLY this bot using PID file or specific path
+            if [ -f /root/tgvdup/bot.pid ]; then
+              PID=$(cat /root/tgvdup/bot.pid)
               kill "$PID" 2>/dev/null || true
             fi
-            # One-time path-specific cleanup to ensure transition succeeds
+            # Cleanup any old processes
+            pkill -f "python3 /root/tgvdup/bot.py" || true
             pkill -f "python3 /root/actanime-bot/bot.py" || true
-            pkill -f "python3 /www/wwwroot/actanime-bot/bot.py" || true
+            pkill -f "python3 .*tgvdup/bot.py" || true
             sleep 2
 
             # Start bot with PID file
-            nohup python3 /root/actanime-bot/bot.py >> /root/actanime-bot/bot.log 2>&1 &
-            echo $! > /root/actanime-bot/bot.pid
+            nohup python3 /root/tgvdup/bot.py >> /root/tgvdup/bot.log 2>&1 &
+            echo $! > /root/tgvdup/bot.pid
             sleep 3
 
-            if kill -0 $(cat /root/actanime-bot/bot.pid) 2>/dev/null; then
-              echo "✅ Bot running! PID: $(cat /root/actanime-bot/bot.pid)"
+            if kill -0 $(cat /root/tgvdup/bot.pid) 2>/dev/null; then
+              echo "✅ Bot running! PID: $(cat /root/tgvdup/bot.pid)"
+
+              # Notify Owner via Telegram
+              if [ -f /root/tgvdup/config.env ]; then
+                set -a
+                source /root/tgvdup/config.env
+                set +a
+                if [ -n "$BOT_TOKEN" ] && [ -n "$OWNER_ID" ]; then
+                  MSG="✅ *Auto Deploy Success*\n\nBot restarted on VPS.\nPID: $(cat /root/tgvdup/bot.pid)\nTime: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+                  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                    -d chat_id="${OWNER_ID}" \
+                    -d text="${MSG}" \
+                    -d parse_mode="Markdown" > /dev/null || echo "Notify failed (non-critical)"
+                  echo "✅ Owner notified"
+                fi
+              fi
             else
               echo "❌ Bot crashed:"
-              tail -20 /root/actanime-bot/bot.log
+              tail -20 /root/tgvdup/bot.log
               exit 1
             fi
