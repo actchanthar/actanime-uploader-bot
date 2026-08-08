@@ -26,63 +26,63 @@ jobs:
           EXCLUDE:         "tmp/, *.session, __pycache__/, *.log, .git/"
           ARGS:            "-rlgoDzvc --delete"
 
-      - name: Install deps + restart bot + notify owner
+      - name: Stop old bot + install deps
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key:      ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 5m
+          command_timeout: 3m
           script: |
-            set -e
-            cd /root/tgvdup
-
-            # Create tmp folder
+            cd /root/tgvdup || mkdir -p /root/tgvdup && cd /root/tgvdup
             mkdir -p tmp
-
-            # Install Python packages
             pip3 install -q -r requirements.txt --break-system-packages || true
 
-            # Stop ONLY this bot
-            if [ -f /root/tgvdup/bot.pid ]; then
-              OLD_PID=$(cat /root/tgvdup/bot.pid)
-              kill "$OLD_PID" 2>/dev/null || true
+            # Stop old process
+            if [ -f bot.pid ]; then
+              OLD_PID=$(cat bot.pid)
+              kill $OLD_PID 2>/dev/null || true
               sleep 1
-              kill -9 "$OLD_PID" 2>/dev/null || true
+              kill -9 $OLD_PID 2>/dev/null || true
+              rm -f bot.pid
             fi
-            pkill -f "/root/tgvdup/bot.py" 2>/dev/null || true
-            pkill -f "/root/actanime-bot/bot.py" 2>/dev/null || true
-            sleep 2
+            pkill -f "tgvdup/bot.py" 2>/dev/null || true
+            pkill -f "actanime-bot/bot.py" 2>/dev/null || true
+            sleep 1
+            echo "Old processes stopped"
 
-            # Start bot fully detached
-            nohup python3 /root/tgvdup/bot.py >> /root/tgvdup/bot.log 2>&1 </dev/null &
+      - name: Start bot + notify owner
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            cd /root/tgvdup
+
+            # Start fully detached
+            setsid nohup python3 bot.py >> bot.log 2>&1 < /dev/null &
             NEW_PID=$!
-            echo $NEW_PID > /root/tgvdup/bot.pid
-            disown $NEW_PID 2>/dev/null || true
-            sleep 4
+            echo $NEW_PID > bot.pid
+            sleep 5
 
             if kill -0 $NEW_PID 2>/dev/null; then
               echo "✅ Bot running! PID: $NEW_PID"
 
-              # Notify Owner via Telegram
-              if [ -f /root/tgvdup/config.env ]; then
-                set -a
-                . /root/tgvdup/config.env
-                set +a
+              # Notify Owner
+              if [ -f config.env ]; then
+                export $(grep -v '^#' config.env | xargs) 2>/dev/null || true
                 if [ -n "$BOT_TOKEN" ] && [ -n "$OWNER_ID" ]; then
-                  MSG="✅ *Auto Deploy Success*%0A%0ABot restarted on VPS.%0APID: $NEW_PID%0ATime: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
                   curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                    -d chat_id="${OWNER_ID}" \
-                    -d text="${MSG}" \
-                    -d parse_mode="Markdown" > /dev/null || echo "Notify failed (non-critical)"
+                    --data-urlencode "chat_id=${OWNER_ID}" \
+                    --data-urlencode "text=✅ Auto Deploy Success%0A%0ABot restarted on VPS.%0APID: ${NEW_PID}%0ATime: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+                    -d "parse_mode=Markdown" > /dev/null || echo "Notify failed"
                   echo "✅ Owner notified"
                 fi
               fi
             else
-              echo "❌ Bot crashed:"
-              tail -30 /root/tgvdup/bot.log || true
+              echo "❌ Bot failed to start. Last log:"
+              tail -40 bot.log || true
               exit 1
             fi
-
-            # Force clean exit so SSH session does not hang
-            exit 0
