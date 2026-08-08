@@ -35,7 +35,6 @@ jobs:
           command_timeout: 5m
           script: |
             echo "=== STOP STEP ==="
-            whoami
             cd /root/tgvdup
             mkdir -p tmp
 
@@ -43,22 +42,29 @@ jobs:
             pip3 install -q -r requirements.txt --break-system-packages || true
             echo "pip done"
 
-            echo "Stopping old processes by PID only..."
+            echo "Stopping old bot processes..."
+
+            # Kill by PID file first
             if [ -f bot.pid ]; then
               OLD_PID=$(cat bot.pid)
-              echo "Found PID file: $OLD_PID"
-              if kill -0 "$OLD_PID" 2>/dev/null; then
-                kill "$OLD_PID" 2>/dev/null || true
-                sleep 2
-                kill -9 "$OLD_PID" 2>/dev/null || true
-                echo "Killed PID $OLD_PID"
-              else
-                echo "PID $OLD_PID not running"
-              fi
+              echo "PID file: $OLD_PID"
+              kill "$OLD_PID" 2>/dev/null || true
+              sleep 1
+              kill -9 "$OLD_PID" 2>/dev/null || true
               rm -f bot.pid
-            else
-              echo "No PID file found (first run or already clean)"
             fi
+
+            # Safely find and kill any remaining bot.py processes
+            # [p]ython trick prevents matching the current shell/script
+            for pid in $(ps aux | grep '[p]ython3.*bot.py' | awk '{print $2}'); do
+              echo "Killing leftover PID: $pid"
+              kill -9 "$pid" 2>/dev/null || true
+            done
+
+            sleep 2
+
+            # Clear session lock files if any
+            rm -f *.session-journal 2>/dev/null || true
 
             echo "Old processes stopped"
             echo "=== END STOP ==="
@@ -79,7 +85,7 @@ jobs:
             NEW_PID=$!
             echo $NEW_PID > bot.pid
             echo "Started with PID: $NEW_PID"
-            sleep 6
+            sleep 8
 
             if kill -0 $NEW_PID 2>/dev/null; then
               echo "✅ Bot running! PID: $NEW_PID"
@@ -100,7 +106,7 @@ jobs:
               fi
             else
               echo "❌ Bot failed to start. Last log:"
-              tail -50 bot.log || true
+              tail -60 bot.log || true
               exit 1
             fi
             echo "=== END START ==="
