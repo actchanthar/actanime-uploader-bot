@@ -42,9 +42,9 @@ jobs:
             pip3 install -q -r requirements.txt --break-system-packages || true
             echo "pip done"
 
-            echo "Stopping ONLY this bot (tgvdup)..."
+            echo "Stopping ONLY tgvdup bot..."
 
-            # Kill by PID file first
+            # 1. Kill by PID file
             if [ -f bot.pid ]; then
               OLD_PID=$(cat bot.pid)
               echo "PID file: $OLD_PID"
@@ -54,17 +54,31 @@ jobs:
               rm -f bot.pid
             fi
 
-            # Only kill processes running THIS specific bot path
-            # [p]ython prevents matching the grep itself
+            # 2. Kill any process holding the session file (most reliable)
+            if [ -f actanime_bot.session ]; then
+              fuser -k actanime_bot.session 2>/dev/null || true
+              sleep 1
+            fi
+
+            # 3. Kill by full path in cmdline
             for pid in $(ps aux | grep '[p]ython3.*/root/tgvdup/bot.py' | awk '{print $2}'); do
-              echo "Killing tgvdup bot PID: $pid"
+              echo "Killing full-path PID: $pid"
               kill -9 "$pid" 2>/dev/null || true
+            done
+
+            # 4. Kill python processes whose cwd is /root/tgvdup
+            for pid in $(pgrep -f 'python3' 2>/dev/null || true); do
+              cwd=$(readlink -f /proc/$pid/cwd 2>/dev/null || true)
+              if [ "$cwd" = "/root/tgvdup" ]; then
+                echo "Killing cwd-match PID: $pid"
+                kill -9 "$pid" 2>/dev/null || true
+              fi
             done
 
             sleep 2
             rm -f *.session-journal 2>/dev/null || true
 
-            echo "Only tgvdup bot stopped (other bots untouched)"
+            echo "tgvdup bot stopped (other bots safe)"
             echo "=== END STOP ==="
 
       - name: Start bot + notify owner
@@ -78,12 +92,17 @@ jobs:
             echo "=== START STEP ==="
             cd /root/tgvdup
 
+            # Final safety: free session file
+            fuser -k actanime_bot.session 2>/dev/null || true
+            rm -f *.session-journal 2>/dev/null || true
+            sleep 1
+
             echo "Starting bot..."
             setsid nohup python3 /root/tgvdup/bot.py >> bot.log 2>&1 < /dev/null &
             NEW_PID=$!
             echo $NEW_PID > bot.pid
             echo "Started with PID: $NEW_PID"
-            sleep 8
+            sleep 10
 
             if kill -0 $NEW_PID 2>/dev/null; then
               echo "✅ Bot running! PID: $NEW_PID"
