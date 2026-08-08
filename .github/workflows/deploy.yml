@@ -42,7 +42,7 @@ jobs:
             pip3 install -q -r requirements.txt --break-system-packages || true
             echo "pip done"
 
-            echo "Stopping old bot processes..."
+            echo "Stopping ONLY this bot (tgvdup)..."
 
             # Kill by PID file first
             if [ -f bot.pid ]; then
@@ -54,19 +54,17 @@ jobs:
               rm -f bot.pid
             fi
 
-            # Safely find and kill any remaining bot.py processes
-            # [p]ython trick prevents matching the current shell/script
-            for pid in $(ps aux | grep '[p]ython3.*bot.py' | awk '{print $2}'); do
-              echo "Killing leftover PID: $pid"
+            # Only kill processes running THIS specific bot path
+            # [p]ython prevents matching the grep itself
+            for pid in $(ps aux | grep '[p]ython3.*/root/tgvdup/bot.py' | awk '{print $2}'); do
+              echo "Killing tgvdup bot PID: $pid"
               kill -9 "$pid" 2>/dev/null || true
             done
 
             sleep 2
-
-            # Clear session lock files if any
             rm -f *.session-journal 2>/dev/null || true
 
-            echo "Old processes stopped"
+            echo "Only tgvdup bot stopped (other bots untouched)"
             echo "=== END STOP ==="
 
       - name: Start bot + notify owner
@@ -81,7 +79,7 @@ jobs:
             cd /root/tgvdup
 
             echo "Starting bot..."
-            setsid nohup python3 bot.py >> bot.log 2>&1 < /dev/null &
+            setsid nohup python3 /root/tgvdup/bot.py >> bot.log 2>&1 < /dev/null &
             NEW_PID=$!
             echo $NEW_PID > bot.pid
             echo "Started with PID: $NEW_PID"
